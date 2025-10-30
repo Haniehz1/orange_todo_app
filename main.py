@@ -147,7 +147,8 @@ INLINE_HTML_TEMPLATE = f"""
 
 # METHOD 2: Reference the static files from the deployed server
 SERVER_URL = os.environ.get(
-    "SERVER_URL", "https://haniehz1.github.io/orange_todo_app"
+    "SERVER_URL",
+    "https://raw.githubusercontent.com/Haniehz1/orange_todo_app/refs/heads/main/docs",
 )
 CSS_URL = "/" + ASSET_PATHS["css_rel"]
 JS_URL = "/" + ASSET_PATHS["js_rel"]
