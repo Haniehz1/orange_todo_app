@@ -209,21 +209,11 @@ def _derive_asset_paths(manifest: Dict[str, Any]) -> Dict[str, Any]:
     css_rel = css_entry.lstrip("/")
     js_rel = js_entry.lstrip("/")
 
-    css_path = BUILD_DIR / css_rel
-    js_path = BUILD_DIR / js_rel
-
-    if not css_path.exists() or not js_path.exists():
-        raise FileNotFoundError(
-            f"Expected build assets not found. CSS: {css_path.exists()} JS: {js_path.exists()}"
-        )
-
     version_token = Path(js_rel).stem.split(".")[-1]
 
     return {
         "css_rel": css_rel,
         "js_rel": js_rel,
-        "css_path": css_path,
-        "js_path": js_path,
         "version": version_token,
     }
 
@@ -301,21 +291,9 @@ class AssetRegistry:
             f'<script type="module" src="{SERVER_URL}/{js_rel}"></script>'
         )
 
-        # Local inline fallback only if files exist at runtime
-        inline_html = None
-        css_path = BUILD_DIR / css_rel
-        js_path = BUILD_DIR / js_rel
-        if (not USE_DEPLOYED_TEMPLATE) and css_path.exists() and js_path.exists():
-            try:
-                inline_html = (
-                    '<div id="todo-root"></div>\n'
-                    + "<style>\n" + css_path.read_text(encoding="utf-8") + "\n</style>\n"
-                    + '<script type="module">\n' + js_path.read_text(encoding="utf-8") + "\n</script>"
-                )
-            except OSError:
-                inline_html = None
-
-        html = inline_html or deployed_html
+        # In deploys, prefer CDN assets to avoid local file dependency.
+        # If you really want inline during local dev, add a guarded branch here.
+        html = deployed_html
 
         return TodoWidget(
             identifier=WIDGET_IDENTIFIER,
