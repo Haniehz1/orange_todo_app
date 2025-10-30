@@ -191,6 +191,12 @@ function App() {
       ? "Checked off and logged for your records."
       : "Review what’s on deck and what’s done.";
 
+  const highlightTask = MODE === "add" ? added : MODE === "remove" ? removed : null;
+  const highlightClass = `todo-highlight${MODE === "remove" ? " todo-highlight--complete" : ""}`;
+  const previewLimit = MODE === "get" ? sortedTasks.length : 4;
+  const previewTasks = sortedTasks.slice(0, previewLimit);
+  const hasMoreTasks = sortedTasks.length > previewTasks.length;
+
   return (
     <div className={`App ${theme}`} data-theme={theme}>
       <section className={`todo-card todo-card--${MODE}`} aria-label="Todo widget">
@@ -203,91 +209,97 @@ function App() {
           <h1>{headerTitle}</h1>
           <p>{headerSubtitle}</p>
         </header>
-
-        <div className="todo-summary" aria-label="Summary">
-          <div>
-            <span className="todo-summary__label">Active</span>
-            <span className="todo-summary__value">{stats.active}</span>
-          </div>
-          <div>
-            <span className="todo-summary__label">Completed</span>
-            <span className="todo-summary__value">{stats.completed}</span>
-          </div>
-          <div>
-            <span className="todo-summary__label">Total</span>
-            <span className="todo-summary__value">{stats.total}</span>
-          </div>
-        </div>
-
-        {MODE === "add" && added && (
-          <section className="todo-section" aria-label="New task">
-            <h2>New task saved</h2>
-            <div className="todo-highlight">
-              <span className="todo-highlight__title">{added.title}</span>
-              <span className="todo-highlight__meta">
-                Added {formatTimestamp(added.created_at)}
-              </span>
-            </div>
-          </section>
-        )}
-
-        {MODE === "remove" && removed && (
-          <section className="todo-section" aria-label="Completed task">
-            <h2>Marked complete</h2>
-            <div className="todo-highlight todo-highlight--complete">
-              <span className="todo-highlight__title">{removed.title}</span>
-              <span className="todo-highlight__meta">
-                Completed {formatTimestamp(stats.lastCompletedAt)}
-              </span>
-            </div>
-          </section>
-        )}
-
-        {MODE === "get" && (
-          <section className="todo-section" aria-label="Active tasks">
-            <h2>Active tasks</h2>
-            {sortedTasks.length > 0 ? (
-              <ul className="todo-list">
-                {sortedTasks.map((task) => (
-                  <li key={task.id} className="todo-item">
-                    <span className="todo-item__accent" aria-hidden />
-                    <div className="todo-item__body">
-                      <span className="todo-item__title">{task.title}</span>
-                      <span className="todo-item__timestamp">
-                        Added {formatTimestamp(task.created_at)}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="todo-empty">You’re all clear for now.</p>
-            )}
-          </section>
-        )}
-
-        {recentCompletions.length > 0 && (
-          <section className="todo-section" aria-label="Recent completions">
-            <h2>Recent completions</h2>
-            <ol className="todo-timeline">
-              {recentCompletions.map((entry) => (
-                <li key={`${entry.id}-${entry.completed_at}`}>
-                  <span className="todo-timeline__title">{entry.title}</span>
-                  <span className="todo-timeline__meta">
-                    {formatTimestamp(entry.completed_at)}
+        <div className="todo-card__layout">
+          <div className="todo-panel todo-panel--primary">
+            {highlightTask && (
+              <section className="todo-section" aria-label="Highlighted task">
+                <h2>{MODE === "add" ? "New task saved" : "Marked complete"}</h2>
+                <div className={highlightClass}>
+                  <span className="todo-highlight__title">{highlightTask.title}</span>
+                  <span className="todo-highlight__meta">
+                    {MODE === "add"
+                      ? `Added ${formatTimestamp(highlightTask.created_at)}`
+                      : `Completed ${formatTimestamp(stats.lastCompletedAt)}`}
                   </span>
-                </li>
-              ))}
-            </ol>
-          </section>
-        )}
+                </div>
+              </section>
+            )}
 
-        <footer className="todo-footer">
-          <p>
-            Use the add or remove tools to update your list, then call “Get tasks” to
-            refresh this snapshot.
-          </p>
-        </footer>
+            <section className="todo-section" aria-label="Active tasks">
+              <div className="todo-section__header">
+                <h2>Active tasks</h2>
+                {hasMoreTasks && <span>{sortedTasks.length} total</span>}
+              </div>
+              {previewTasks.length > 0 ? (
+                <ul className="todo-list">
+                  {previewTasks.map((task) => (
+                    <li key={task.id} className="todo-item">
+                      <span className="todo-item__accent" aria-hidden />
+                      <div className="todo-item__body">
+                        <span className="todo-item__title">{task.title}</span>
+                        <span className="todo-item__timestamp">
+                          Added {formatTimestamp(task.created_at)}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="todo-empty">You’re all clear for now.</p>
+              )}
+              {hasMoreTasks && MODE !== "get" && (
+                <p className="todo-note">Run “Get tasks” to see the full list.</p>
+              )}
+            </section>
+          </div>
+
+          <aside className="todo-panel todo-panel--secondary">
+            <div className="todo-summary" aria-label="Summary">
+              <div>
+                <span className="todo-summary__label">Active</span>
+                <span className="todo-summary__value">{stats.active}</span>
+              </div>
+              <div>
+                <span className="todo-summary__label">Completed</span>
+                <span className="todo-summary__value">{stats.completed}</span>
+              </div>
+              <div>
+                <span className="todo-summary__label">Total</span>
+                <span className="todo-summary__value">{stats.total}</span>
+              </div>
+            </div>
+
+            <section className="todo-section" aria-label="Recent completions">
+              <div className="todo-section__header">
+                <h2>Recent completions</h2>
+                {stats.lastCompletedAt && (
+                  <span>Last: {formatTimestamp(stats.lastCompletedAt)}</span>
+                )}
+              </div>
+              {recentCompletions.length > 0 ? (
+                <ol className="todo-timeline">
+                  {recentCompletions.map((entry) => (
+                    <li key={`${entry.id}-${entry.completed_at}`}>
+                      <span className="todo-timeline__title">{entry.title}</span>
+                      <span className="todo-timeline__meta">
+                        {formatTimestamp(entry.completed_at)}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="todo-empty">No completions yet.</p>
+              )}
+            </section>
+
+            <footer className="todo-footer">
+              <p>
+                Use “Add task” or “Remove task” to update your list. Call “Get tasks” any
+                time to refresh this overview.
+              </p>
+            </footer>
+          </aside>
+        </div>
       </section>
     </div>
   );
