@@ -308,26 +308,11 @@ REMOVE_TASK_TOOL = "todo-remove-task"
 
 MIME_TYPE = "text/html+skybridge"
 
-mcp = FastMCP(
-    name="todo",
-    stateless_http=True,
-)
-app = MCPApp(
-    name="todo",
-    description="Interactive todo list widget with task management tools",
-    mcp=mcp,
-)
-
-
-def _resource_description() -> str:
-    return "Todo dashboard widget markup"
-
-
-def _tool_meta(read_only: bool = False) -> Dict[str, Any]:
+def _tool_meta(widget: TodoWidget, read_only: bool = False) -> Dict[str, Any]:
     return {
-        "openai/outputTemplate": WIDGET.template_uri,
-        "openai/toolInvocation/invoking": WIDGET.invoking,
-        "openai/toolInvocation/invoked": WIDGET.invoked,
+        "openai/outputTemplate": widget.template_uri,
+        "openai/toolInvocation/invoking": widget.invoking,
+        "openai/toolInvocation/invoked": widget.invoked,
         "openai/widgetAccessible": True,
         "openai/resultCanProduceWidget": True,
         "annotations": {
@@ -338,27 +323,79 @@ def _tool_meta(read_only: bool = False) -> Dict[str, Any]:
     }
 
 
-def _embedded_widget_resource() -> types.EmbeddedResource:
-    return types.EmbeddedResource(
-        type="resource",
-        resource=types.TextResourceContents(
-            uri=WIDGET.template_uri,
-            mimeType=MIME_TYPE,
-            text=WIDGET.html,
-            title=WIDGET.title,
-        ),
-    )
+class AssetRegistry:
+    def __init__(self) -> None:
+        manifest = _derive_asset_paths(_read_local_manifest())
+        self._lock = asyncio.Lock()
+        self._snapshot = self._build_snapshot(manifest)
+
+    def _build_snapshot(self, manifest: Dict[str, Any]) -> TodoWidget:
+        css_rel = manifest["css_rel"]
+        js_rel = manifest["js_rel"]
+        css_path = manifest["css_path"]
+        js_path = manifest["js_path"]
+        version = manifest["version"]
+
+        inline_html = f"""
+<div id="todo-root"></div>
+<style>
+{css_path.read_text(encoding='utf-8')}
+</style>
+<script type="module">
+{js_path.read_text(encoding='utf-8')}
+</script>
+"""
+
+        deployed_html = (
+            '<div id="todo-root"></div>\n'
+            f'<link rel="stylesheet" href="{SERVER_URL}/{css_rel}">\n'
+            f'<script type="module" src="{SERVER_URL}/{js_rel}"></script>'
+        )
+
+        html = deployed_html if USE_DEPLOYED_TEMPLATE else inline_html
+
+        return TodoWidget(
+            identifier="todo-dashboard",
+            title="Todo Dashboard",
+            template_uri=f"ui://widget/todo-dashboard-{version}.html",
+            invoking="Checking your tasks",
+            invoked="Updating your tasks...",
+            html=html,
+        )
+
+    async def snapshot(self) -> TodoWidget:
+        return self._snapshot
+
+    async def refresh(self) -> TodoWidget:
+        async with self._lock:
+            if USE_DEPLOYED_TEMPLATE and SERVER_URL.startswith("http"):
+                manifest_url = SERVER_URL.rstrip("/") + "/asset-manifest.json"
+                manifest = _fetch_remote_manifest(manifest_url)
+                if manifest:
+                    self._snapshot = self._build_snapshot(
+                        _derive_asset_paths(manifest)
+                    )
+                    return self._snapshot
+
+            # fallback / initial load
+            manifest = _derive_asset_paths(_read_local_manifest())
+            self._snapshot = self._build_snapshot(manifest)
+            return self._snapshot
+
+
+ASSET_REGISTRY = AssetRegistry()
 
 
 @mcp._mcp_server.list_tools()
 async def _list_tools() -> List[types.Tool]:
+    widget = await ASSET_REGISTRY.refresh()
     return [
         types.Tool(
             name=GET_TASKS_TOOL,
             title="Get tasks",
             inputSchema={"type": "object", "properties": {}},
             description="Retrieve the current todo list",
-            _meta=_tool_meta(read_only=True),
+            _meta=_tool_meta(widget, read_only=True),
         ),
         types.Tool(
             name=ADD_TASK_TOOL,
@@ -374,7 +411,7 @@ async def _list_tools() -> List[types.Tool]:
                 "required": ["title"],
             },
             description="Add a new task to the todo list",
-            _meta=_tool_meta(read_only=False),
+            _meta=_tool_meta(widget, read_only=False),
         ),
         types.Tool(
             name=REMOVE_TASK_TOOL,
@@ -390,41 +427,44 @@ async def _list_tools() -> List[types.Tool]:
                 "required": ["id"],
             },
             description="Remove a task from the todo list",
-            _meta=_tool_meta(read_only=False),
+            _meta=_tool_meta(widget, read_only=False),
         ),
     ]
 
 
 @mcp._mcp_server.list_resources()
 async def _list_resources() -> List[types.Resource]:
+    widget = await ASSET_REGISTRY.refresh()
     return [
         types.Resource(
             name=WIDGET.title,
             title=WIDGET.title,
-            uri=WIDGET.template_uri,
-            description=_resource_description(),
+            uri=widget.template_uri,
+            description="Todo dashboard widget markup",
             mimeType=MIME_TYPE,
-            _meta=_tool_meta(),
+            _meta=_tool_meta(widget),
         )
     ]
 
 
 @mcp._mcp_server.list_resource_templates()
 async def _list_resource_templates() -> List[types.ResourceTemplate]:
+    widget = await ASSET_REGISTRY.refresh()
     return [
         types.ResourceTemplate(
             name=WIDGET.title,
             title=WIDGET.title,
-            uriTemplate=WIDGET.template_uri,
-            description=_resource_description(),
+            uriTemplate=widget.template_uri,
+            description="Todo dashboard widget markup",
             mimeType=MIME_TYPE,
-            _meta=_tool_meta(),
+            _meta=_tool_meta(widget),
         )
     ]
 
 
 async def _handle_read_resource(req: types.ReadResourceRequest) -> types.ServerResult:
-    if str(req.params.uri) != WIDGET.template_uri:
+    widget = await ASSET_REGISTRY.refresh()
+    if str(req.params.uri) != widget.template_uri:
         return types.ServerResult(
             types.ReadResourceResult(
                 contents=[],
@@ -434,10 +474,10 @@ async def _handle_read_resource(req: types.ReadResourceRequest) -> types.ServerR
 
     contents = [
         types.TextResourceContents(
-            uri=WIDGET.template_uri,
+            uri=widget.template_uri,
             mimeType=MIME_TYPE,
-            text=WIDGET.html,
-            _meta=_tool_meta(),
+            text=widget.html,
+            _meta=_tool_meta(widget),
         )
     ]
 
@@ -461,9 +501,18 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             )
         )
 
-    widget_resource = _embedded_widget_resource()
+    widget = await ASSET_REGISTRY.refresh()
+    widget_resource = types.EmbeddedResource(
+        type="resource",
+        resource=types.TextResourceContents(
+            uri=widget.template_uri,
+            mimeType=MIME_TYPE,
+            text=widget.html,
+            title=widget.title,
+        ),
+    )
     meta: Dict[str, Any] = {
-        **_tool_meta(read_only=tool_name == GET_TASKS_TOOL),
+        **_tool_meta(widget, read_only=tool_name == GET_TASKS_TOOL),
         "openai.com/widget": widget_resource.model_dump(mode="json"),
     }
 
