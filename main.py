@@ -267,39 +267,10 @@ JS_PATH = ASSET_PATHS["js_path"]
 CSS_PATH = ASSET_PATHS["css_path"]
 
 # METHOD 1: Inline the JS and CSS into the HTML template
-WIDGET_JS = JS_PATH.read_text(encoding="utf-8")
-WIDGET_CSS = CSS_PATH.read_text(encoding="utf-8")
-
-INLINE_HTML_TEMPLATE = f"""
-<div id="todo-root"></div>
-<style>
-{WIDGET_CSS}
-</style>
-<script type="module">
-{WIDGET_JS}
-</script>
-"""
-
 CSS_URL = "/" + ASSET_PATHS["css_rel"]
 JS_URL = "/" + ASSET_PATHS["js_rel"]
-DEPLOYED_HTML_TEMPLATE = (
-    '<div id="todo-root"></div>\n'
-    f'<link rel="stylesheet" href="{SERVER_URL}{CSS_URL}">\n'
-    f'<script type="module" src="{SERVER_URL}{JS_URL}"></script>'
-)
-HTML_TEMPLATE = DEPLOYED_HTML_TEMPLATE if USE_DEPLOYED_TEMPLATE else INLINE_HTML_TEMPLATE
-
-TEMPLATE_URI = f"ui://widget/todo-dashboard-{ASSET_PATHS['version']}.html"
-
-WIDGET = TodoWidget(
-    identifier="todo-dashboard",
-    title="Todo Dashboard",
-    # OpenAI Apps heavily cache resources by URI, so use a date-based URI to bust the cache when updating the app.
-    template_uri=TEMPLATE_URI,
-    invoking="Checking your tasks",
-    invoked="Updating your tasks...",
-    html=HTML_TEMPLATE,
-)
+WIDGET_IDENTIFIER = "todo-dashboard"
+WIDGET_TITLE = "Todo Dashboard"
 
 GET_TASKS_TOOL = "todo-get-tasks"
 ADD_TASK_TOOL = "todo-add-task"
@@ -355,8 +326,8 @@ class AssetRegistry:
         html = deployed_html if USE_DEPLOYED_TEMPLATE else inline_html
 
         return TodoWidget(
-            identifier="todo-dashboard",
-            title="Todo Dashboard",
+            identifier=WIDGET_IDENTIFIER,
+            title=WIDGET_TITLE,
             template_uri=f"ui://widget/todo-dashboard-{version}.html",
             invoking="Checking your tasks",
             invoked="Updating your tasks...",
@@ -384,6 +355,17 @@ class AssetRegistry:
 
 
 ASSET_REGISTRY = AssetRegistry()
+
+
+mcp = FastMCP(
+    name="todo",
+    stateless_http=True,
+)
+app = MCPApp(
+    name="todo",
+    description="Interactive todo list widget with task management tools",
+    mcp=mcp,
+)
 
 
 @mcp._mcp_server.list_tools()
@@ -437,8 +419,8 @@ async def _list_resources() -> List[types.Resource]:
     widget = await ASSET_REGISTRY.refresh()
     return [
         types.Resource(
-            name=WIDGET.title,
-            title=WIDGET.title,
+            name=WIDGET_TITLE,
+            title=WIDGET_TITLE,
             uri=widget.template_uri,
             description="Todo dashboard widget markup",
             mimeType=MIME_TYPE,
@@ -452,8 +434,8 @@ async def _list_resource_templates() -> List[types.ResourceTemplate]:
     widget = await ASSET_REGISTRY.refresh()
     return [
         types.ResourceTemplate(
-            name=WIDGET.title,
-            title=WIDGET.title,
+            name=WIDGET_TITLE,
+            title=WIDGET_TITLE,
             uriTemplate=widget.template_uri,
             description="Todo dashboard widget markup",
             mimeType=MIME_TYPE,
