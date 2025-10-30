@@ -14,19 +14,19 @@
 .todo-card {
   width: 360px;
   max-width: 100%;
-  background: linear-gradient(150deg, rgba(255, 255, 255, 0.97), rgba(255, 245, 236, 0.94));
+  background: linear-gradient(150deg, rgba(255, 255, 248, 0.97), rgba(255, 247, 210, 0.95));
   border-radius: 22px;
-  border: 1px solid rgba(255, 163, 102, 0.32);
-  box-shadow: 0 22px 45px rgba(255, 138, 70, 0.18);
+  border: 1px solid rgba(255, 213, 102, 0.35);
+  box-shadow: 0 22px 45px rgba(255, 208, 80, 0.24);
   padding: 1.9rem;
   backdrop-filter: blur(10px);
   position: relative;
 }
 
 .App.dark .todo-card {
-  background: linear-gradient(145deg, rgba(36, 24, 16, 0.94), rgba(48, 31, 20, 0.94));
-  border-color: rgba(255, 205, 150, 0.32);
-  box-shadow: 0 22px 45px rgba(194, 102, 42, 0.32);
+  background: linear-gradient(145deg, rgba(48, 42, 18, 0.95), rgba(36, 30, 12, 0.95));
+  border-color: rgba(255, 225, 140, 0.4);
+  box-shadow: 0 22px 45px rgba(214, 182, 70, 0.32);
 }
 
 .todo-card::after {
@@ -34,7 +34,7 @@
   position: absolute;
   inset: 0;
   border-radius: 22px;
-  border: 1.5px solid rgba(255, 180, 110, 0.5);
+  border: 1.5px solid rgba(255, 220, 140, 0.55);
   pointer-events: none;
 }
 
@@ -52,8 +52,8 @@
   border-radius: 14px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, rgba(255, 187, 111, 0.7), rgba(255, 135, 75, 0.85));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+  background: linear-gradient(135deg, rgba(255, 226, 128, 0.85), rgba(255, 198, 54, 0.95));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
 }
 
 .todo-card__badge span {
@@ -84,16 +84,16 @@
 .todo-summary div {
   padding: 0.75rem;
   border-radius: 14px;
-  background: rgba(255, 170, 111, 0.15);
-  border: 1px solid rgba(255, 170, 111, 0.25);
+  background: rgba(255, 236, 153, 0.28);
+  border: 1px solid rgba(255, 223, 128, 0.38);
   display: grid;
   gap: 0.35rem;
   justify-items: center;
 }
 
 .App.dark .todo-summary div {
-  background: rgba(255, 180, 124, 0.2);
-  border-color: rgba(255, 180, 124, 0.28);
+  background: rgba(255, 224, 153, 0.22);
+  border-color: rgba(255, 214, 128, 0.34);
 }
 
 .todo-summary__label {
@@ -129,15 +129,15 @@
 .todo-highlight {
   padding: 1rem 1.1rem;
   border-radius: 16px;
-  background: rgba(255, 200, 150, 0.18);
-  border: 1px solid rgba(255, 170, 111, 0.3);
+  background: rgba(255, 236, 170, 0.28);
+  border: 1px solid rgba(255, 220, 130, 0.38);
   display: grid;
   gap: 0.35rem;
 }
 
 .todo-highlight--complete {
-  background: rgba(193, 255, 215, 0.16);
-  border-color: rgba(139, 214, 172, 0.3);
+  background: rgba(248, 255, 193, 0.18);
+  border-color: rgba(219, 235, 136, 0.32);
 }
 
 .todo-highlight__title {
@@ -161,8 +161,8 @@
   position: relative;
   padding: 0.85rem 1rem 0.85rem 1.4rem;
   border-radius: 16px;
-  background: rgba(255, 185, 128, 0.16);
-  border: 1px solid rgba(255, 171, 116, 0.25);
+  background: rgba(255, 237, 170, 0.2);
+  border: 1px solid rgba(255, 223, 120, 0.3);
 }
 
 .todo-item__accent {
@@ -172,7 +172,7 @@
   left: 0;
   width: 5px;
   border-radius: 16px 0 0 16px;
-  background: linear-gradient(180deg, rgba(255, 210, 160, 0.95), rgba(255, 138, 74, 0.95));
+  background: linear-gradient(180deg, rgba(255, 232, 160, 0.95), rgba(255, 204, 74, 0.95));
 }
 
 .todo-item__title {
@@ -226,13 +226,13 @@
 
 .todo-footer {
   padding-top: 1rem;
-  border-top: 1px solid rgba(255, 175, 118, 0.25);
+  border-top: 1px solid rgba(255, 222, 129, 0.35);
   font-size: 0.85rem;
   color: rgba(0, 0, 0, 0.55);
 }
 
 .App.dark .todo-footer {
-  border-top-color: rgba(255, 210, 170, 0.22);
+  border-top-color: rgba(255, 226, 160, 0.28);
   color: rgba(255, 231, 211, 0.6);
 }
 

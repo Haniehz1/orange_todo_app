@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import "./App.css";
 import { useTheme } from "src/utils/hooks/use-theme";
 import { useOpenAiGlobal } from "src/utils/hooks/use-openai-global";
@@ -20,12 +20,20 @@ const MODE: "get" | "add" | "remove" =
 
 const DEFAULT_STATS: TodoStats = { total: 0, active: 0, completed: 0 };
 
-const DEFAULT_SNAPSHOT = {
-  tasks: [] as TodoTask[],
+type Snapshot = {
+  tasks: TodoTask[];
+  stats: TodoStats;
+  completed: CompletedTask[];
+  added: TodoTask | null;
+  removed: TodoTask | null;
+};
+
+const DEFAULT_SNAPSHOT: Snapshot = {
+  tasks: [],
   stats: DEFAULT_STATS,
-  completed: [] as CompletedTask[],
-  added: null as TodoTask | null,
-  removed: null as TodoTask | null,
+  completed: [],
+  added: null,
+  removed: null,
 };
 
 function normalizeTasks(value: unknown): TodoTask[] | null {
@@ -123,29 +131,39 @@ function App() {
   const theme = useTheme();
   const toolOutput = useOpenAiGlobal("toolOutput") as ToolOutputPayload | null;
 
-  const [snapshot, setSnapshot] = useState(DEFAULT_SNAPSHOT);
+  const buildSnapshot = useCallback(
+    (payload: ToolOutputPayload | null, fallback: Snapshot): Snapshot => {
+      if (!payload) {
+        return fallback;
+      }
 
-  useEffect(() => {
-    if (!toolOutput) {
-      return;
-    }
-
-    setSnapshot((prev) => {
-      const tasks = normalizeTasks(toolOutput.tasks) ?? prev.tasks;
-      const stats = normalizeStats(toolOutput.stats) ?? prev.stats;
-      const completed = normalizeCompleted(toolOutput.completedTasks) ?? prev.completed;
-      const added = normalizeTask(toolOutput.added);
-      const removed = normalizeTask(toolOutput.removed);
+      const tasks = normalizeTasks(payload.tasks) ?? fallback.tasks;
+      const stats = normalizeStats(payload.stats) ?? fallback.stats;
+      const completed = normalizeCompleted(payload.completedTasks) ?? fallback.completed;
+      const added = normalizeTask(payload.added);
+      const removed = normalizeTask(payload.removed);
 
       return {
         tasks,
         stats,
         completed,
-        added: added ?? (MODE === "add" ? prev.added : null),
-        removed: removed ?? (MODE === "remove" ? prev.removed : null),
+        added: MODE === "add" ? added ?? fallback.added : null,
+        removed: MODE === "remove" ? removed ?? fallback.removed : null,
       };
-    });
-  }, [toolOutput]);
+    },
+    []
+  );
+
+  const [snapshot, setSnapshot] = useState<Snapshot>(() =>
+    buildSnapshot(toolOutput, DEFAULT_SNAPSHOT)
+  );
+
+  useEffect(() => {
+    if (!toolOutput) {
+      return;
+    }
+    setSnapshot((prev) => buildSnapshot(toolOutput, prev));
+  }, [buildSnapshot, toolOutput]);
 
   const { tasks, stats, completed, added, removed } = snapshot;
 
