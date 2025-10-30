@@ -246,13 +246,6 @@ SERVER_URL = os.environ.get(
     "https://cdn.jsdelivr.net/gh/Haniehz1/orange_todo_app@main/docs",
 )
 
-remote_manifest = None
-if USE_DEPLOYED_TEMPLATE and SERVER_URL.startswith("http"):
-    manifest_url = SERVER_URL.rstrip("/") + "/asset-manifest.json"
-    remote_manifest = _fetch_remote_manifest(manifest_url)
-
-manifest_data = remote_manifest or _read_local_manifest()
-ASSET_PATHS = _derive_asset_paths(manifest_data)
 
 # Providing the JS and CSS to the app can be done in 1 of 2 ways:
 # 1) Load the content as text from the static build files and inline them into the HTML template
@@ -263,20 +256,9 @@ ASSET_PATHS = _derive_asset_paths(manifest_data)
 
 
 # Make sure these paths align with the build output paths (dynamic per build)
-JS_PATH = ASSET_PATHS["js_path"]
-CSS_PATH = ASSET_PATHS["css_path"]
-
-# METHOD 1: Inline the JS and CSS into the HTML template
-CSS_URL = "/" + ASSET_PATHS["css_rel"]
-JS_URL = "/" + ASSET_PATHS["js_rel"]
 WIDGET_IDENTIFIER = "todo-dashboard"
 WIDGET_TITLE = "Todo Dashboard"
-
-GET_TASKS_TOOL = "todo-get-tasks"
-ADD_TASK_TOOL = "todo-add-task"
-REMOVE_TASK_TOOL = "todo-remove-task"
-
-
+# Legacy import-time globals removed: JS_PATH, CSS_PATH, CSS_URL, JS_URL.
 MIME_TYPE = "text/html+skybridge"
 
 def _tool_meta(widget: TodoWidget, read_only: bool = False) -> Dict[str, Any]:
@@ -294,28 +276,24 @@ def _tool_meta(widget: TodoWidget, read_only: bool = False) -> Dict[str, Any]:
     }
 
 
+
 class AssetRegistry:
     def __init__(self) -> None:
-        manifest = _derive_asset_paths(_read_local_manifest())
         self._lock = asyncio.Lock()
-        self._snapshot = self._build_snapshot(manifest)
+        # Minimal placeholder; first refresh() populates real assets.
+        self._snapshot = TodoWidget(
+            identifier=WIDGET_IDENTIFIER,
+            title=WIDGET_TITLE,
+            template_uri="ui://widget/todo-dashboard-initial.html",
+            invoking="Loading your tasks",
+            invoked="Loading your tasks...",
+            html="<div id=\"todo-root\"></div>",
+        )
 
     def _build_snapshot(self, manifest: Dict[str, Any]) -> TodoWidget:
         css_rel = manifest["css_rel"]
         js_rel = manifest["js_rel"]
-        css_path = manifest["css_path"]
-        js_path = manifest["js_path"]
         version = manifest["version"]
-
-        inline_html = f"""
-<div id="todo-root"></div>
-<style>
-{css_path.read_text(encoding='utf-8')}
-</style>
-<script type="module">
-{js_path.read_text(encoding='utf-8')}
-</script>
-"""
 
         deployed_html = (
             '<div id="todo-root"></div>\n'
@@ -323,7 +301,21 @@ class AssetRegistry:
             f'<script type="module" src="{SERVER_URL}/{js_rel}"></script>'
         )
 
-        html = deployed_html if USE_DEPLOYED_TEMPLATE else inline_html
+        # Local inline fallback only if files exist at runtime
+        inline_html = None
+        css_path = BUILD_DIR / css_rel
+        js_path = BUILD_DIR / js_rel
+        if (not USE_DEPLOYED_TEMPLATE) and css_path.exists() and js_path.exists():
+            try:
+                inline_html = (
+                    '<div id="todo-root"></div>\n'
+                    + "<style>\n" + css_path.read_text(encoding="utf-8") + "\n</style>\n"
+                    + '<script type="module">\n' + js_path.read_text(encoding="utf-8") + "\n</script>"
+                )
+            except OSError:
+                inline_html = None
+
+        html = inline_html or deployed_html
 
         return TodoWidget(
             identifier=WIDGET_IDENTIFIER,
@@ -333,7 +325,6 @@ class AssetRegistry:
             invoked="Updating your tasks...",
             html=html,
         )
-
     async def snapshot(self) -> TodoWidget:
         return self._snapshot
 
@@ -347,10 +338,12 @@ class AssetRegistry:
                         _derive_asset_paths(manifest)
                     )
                     return self._snapshot
-
             # fallback / initial load
-            manifest = _derive_asset_paths(_read_local_manifest())
-            self._snapshot = self._build_snapshot(manifest)
+            try:
+                manifest = _derive_asset_paths(_read_local_manifest())
+                self._snapshot = self._build_snapshot(manifest)
+            except Exception:
+                pass
             return self._snapshot
 
 
