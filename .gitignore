@@ -90,4 +90,5 @@ dmypy.json
 
 # Local environment variables
 .env.local
-.env.*.localtodo_state.json
+.env.*.local
+todo_state.json
