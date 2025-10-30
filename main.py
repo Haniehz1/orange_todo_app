@@ -251,6 +251,11 @@ WIDGET_TITLE = "Todo Dashboard"
 # Legacy import-time globals removed: JS_PATH, CSS_PATH, CSS_URL, JS_URL.
 MIME_TYPE = "text/html+skybridge"
 
+# Tool identifiers (must be defined before use)
+GET_TASKS_TOOL = "todo-get-tasks"
+ADD_TASK_TOOL = "todo-add-task"
+REMOVE_TASK_TOOL = "todo-remove-task"
+
 def _tool_meta(widget: TodoWidget, read_only: bool = False) -> Dict[str, Any]:
     return {
         "openai/outputTemplate": widget.template_uri,
