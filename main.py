@@ -12,7 +12,6 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 import json
 import os
-from pathlib import Path
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -22,7 +21,7 @@ import mcp.types as types
 from mcp.server.fastmcp import FastMCP
 import uvicorn
 from mcp_agent.app import MCPApp
-from pathlib import Path
+import httpx
 
 from mcp_agent.server.app_server import create_mcp_server_for_app
 
@@ -184,16 +183,17 @@ BUILD_DIR = Path(__file__).parent / "web" / "build"
 ASSETS_DIR = BUILD_DIR / "static"
 
 
-def _load_asset_paths() -> Dict[str, Path]:
-    """Read CRA asset-manifest to find the hashed CSS/JS bundle names."""
+def _read_local_manifest() -> Dict[str, Any]:
     manifest_path = BUILD_DIR / "asset-manifest.json"
     if not manifest_path.exists():
         raise FileNotFoundError(
             f"Asset manifest not found at {manifest_path}. "
             "Run `yarn build` inside the web/ directory first."
         )
+    return json.loads(manifest_path.read_text(encoding="utf-8"))
 
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+def _derive_asset_paths(manifest: Dict[str, Any]) -> Dict[str, Any]:
     entrypoints = manifest.get("entrypoints", [])
 
     css_entry = next((item for item in entrypoints if item.endswith(".css")), None)
@@ -201,7 +201,7 @@ def _load_asset_paths() -> Dict[str, Path]:
 
     if css_entry is None or js_entry is None:
         raise ValueError(
-            "Could not determine CSS/JS entrypoints from asset-manifest.json. "
+            "Could not determine CSS/JS entrypoints from asset manifest. "
             f"Entrypoints found: {entrypoints}"
         )
 
@@ -216,10 +216,42 @@ def _load_asset_paths() -> Dict[str, Path]:
             f"Expected build assets not found. CSS: {css_path.exists()} JS: {js_path.exists()}"
         )
 
-    return {"css": css_path, "js": js_path, "css_rel": css_rel, "js_rel": js_rel}
+    version_token = Path(js_rel).stem.split(".")[-1]
+
+    return {
+        "css_rel": css_rel,
+        "js_rel": js_rel,
+        "css_path": css_path,
+        "js_path": js_path,
+        "version": version_token,
+    }
 
 
-ASSET_PATHS = _load_asset_paths()
+def _fetch_remote_manifest(url: str) -> Optional[Dict[str, Any]]:
+    try:
+        response = httpx.get(url, timeout=3.0)
+        response.raise_for_status()
+        return response.json()
+    except Exception:
+        return None
+
+
+USE_DEPLOYED_TEMPLATE = (
+    os.environ.get("TODO_USE_DEPLOYED_ASSETS", "true").lower() == "true"
+)
+
+SERVER_URL = os.environ.get(
+    "SERVER_URL",
+    "https://cdn.jsdelivr.net/gh/Haniehz1/orange_todo_app@main/docs",
+)
+
+remote_manifest = None
+if USE_DEPLOYED_TEMPLATE and SERVER_URL.startswith("http"):
+    manifest_url = SERVER_URL.rstrip("/") + "/asset-manifest.json"
+    remote_manifest = _fetch_remote_manifest(manifest_url)
+
+manifest_data = remote_manifest or _read_local_manifest()
+ASSET_PATHS = _derive_asset_paths(manifest_data)
 
 # Providing the JS and CSS to the app can be done in 1 of 2 ways:
 # 1) Load the content as text from the static build files and inline them into the HTML template
@@ -230,8 +262,8 @@ ASSET_PATHS = _load_asset_paths()
 
 
 # Make sure these paths align with the build output paths (dynamic per build)
-JS_PATH = ASSET_PATHS["js"]
-CSS_PATH = ASSET_PATHS["css"]
+JS_PATH = ASSET_PATHS["js_path"]
+CSS_PATH = ASSET_PATHS["css_path"]
 
 # METHOD 1: Inline the JS and CSS into the HTML template
 WIDGET_JS = JS_PATH.read_text(encoding="utf-8")
@@ -247,11 +279,6 @@ INLINE_HTML_TEMPLATE = f"""
 </script>
 """
 
-# METHOD 2: Reference the static files from the deployed server
-SERVER_URL = os.environ.get(
-    "SERVER_URL",
-    "https://cdn.jsdelivr.net/gh/Haniehz1/orange_todo_app@main/docs",
-)
 CSS_URL = "/" + ASSET_PATHS["css_rel"]
 JS_URL = "/" + ASSET_PATHS["js_rel"]
 DEPLOYED_HTML_TEMPLATE = (
@@ -259,17 +286,15 @@ DEPLOYED_HTML_TEMPLATE = (
     f'<link rel="stylesheet" href="{SERVER_URL}{CSS_URL}">\n'
     f'<script type="module" src="{SERVER_URL}{JS_URL}"></script>'
 )
-
-USE_DEPLOYED_TEMPLATE = (
-    os.environ.get("TODO_USE_DEPLOYED_ASSETS", "true").lower() == "true"
-)
 HTML_TEMPLATE = DEPLOYED_HTML_TEMPLATE if USE_DEPLOYED_TEMPLATE else INLINE_HTML_TEMPLATE
+
+TEMPLATE_URI = f"ui://widget/todo-dashboard-{ASSET_PATHS['version']}.html"
 
 WIDGET = TodoWidget(
     identifier="todo-dashboard",
     title="Todo Dashboard",
     # OpenAI Apps heavily cache resources by URI, so use a date-based URI to bust the cache when updating the app.
-    template_uri="ui://widget/todo-dashboard-10-30-2025-18-45.html",
+    template_uri=TEMPLATE_URI,
     invoking="Checking your tasks",
     invoked="Updating your tasks...",
     html=HTML_TEMPLATE,
