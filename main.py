@@ -167,7 +167,7 @@ WIDGET = TodoWidget(
     identifier="todo-dashboard",
     title="Todo Dashboard",
     # OpenAI Apps heavily cache resources by URI, so use a date-based URI to bust the cache when updating the app.
-    template_uri="ui://widget/todo-dashboard-10-29-2025-00-05.html",
+    template_uri="ui://widget/todo-dashboard-10-30-2025-18-15.html",
     invoking="Checking your tasks",
     invoked="Updating your tasks...",
     html=HTML_TEMPLATE,
