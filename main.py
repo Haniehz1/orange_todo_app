@@ -147,7 +147,7 @@ INLINE_HTML_TEMPLATE = f"""
 
 # METHOD 2: Reference the static files from the deployed server
 SERVER_URL = os.environ.get(
-    "SERVER_URL", "https://1a0dnkdwhzgxah2tgcn8r39fg96r9xcy.deployments.mcp-agent.com"
+    "SERVER_URL", "https://haniehz1.github.io/orange_todo_app"
 )
 CSS_URL = "/" + ASSET_PATHS["css_rel"]
 JS_URL = "/" + ASSET_PATHS["js_rel"]
@@ -166,7 +166,7 @@ WIDGET = TodoWidget(
     identifier="todo-dashboard",
     title="Todo Dashboard",
     # OpenAI Apps heavily cache resources by URI, so use a date-based URI to bust the cache when updating the app.
-    template_uri="ui://widget/todo-dashboard-10-28-2025-21-25.html",
+    template_uri="ui://widget/todo-dashboard-10-29-2025-00-05.html",
     invoking="Checking your tasks",
     invoked="Updating your tasks...",
     html=HTML_TEMPLATE,
