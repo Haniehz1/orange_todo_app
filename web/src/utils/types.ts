@@ -5,8 +5,23 @@ export type TodoTask = {
   done: boolean;
 };
 
+export type CompletedTask = {
+  id: string;
+  title: string;
+  completed_at: string;
+};
+
+export type TodoStats = {
+  total: number;
+  active: number;
+  completed: number;
+  lastCompletedAt?: string | null;
+};
+
 export type TodoWidgetState = {
   tasks: TodoTask[];
+  stats?: TodoStats;
+  completedTasks?: CompletedTask[];
   lastUpdated?: string;
 };
 

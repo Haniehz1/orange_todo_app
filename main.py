@@ -7,10 +7,12 @@ returns structured content so the ChatGPT client can hydrate the widget."""
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 import json
 import os
+from pathlib import Path
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -46,33 +48,133 @@ class TodoTask:
 
 
 class TodoStore:
-    """Simple in-memory task store for demo purposes."""
+    """Task store persisted to disk with basic completion stats."""
+
+    _STATE_PATH = Path(__file__).parent / "todo_state.json"
 
     def __init__(self) -> None:
-        self._tasks: Dict[str, TodoTask] = {
-            task.id: task
-            for task in [
-                TodoTask(id="welcome", title="Welcome to your orange todo list"),
-                TodoTask(id="explore", title="Add a new task with the add task tool"),
-                TodoTask(id="clean-up", title="Remove a task using the remove task tool"),
-            ]
-        }
+        self._tasks: "OrderedDict[str, TodoTask]" = OrderedDict()
+        self._completed_total: int = 0
+        self._completed_log: List[Dict[str, Any]] = []
+        self._last_completed_at: Optional[str] = None
         self._lock = asyncio.Lock()
+        self._load_state()
 
-    async def list_tasks(self) -> List[Dict[str, Any]]:
+    def _initial_tasks(self) -> List[TodoTask]:
+        return [
+            TodoTask(id="welcome", title="Welcome to your orange todo list"),
+            TodoTask(id="explore", title="Add a new task with the add task tool"),
+            TodoTask(id="clean-up", title="Remove a task using the remove task tool"),
+        ]
+
+    def _load_state(self) -> None:
+        if self._STATE_PATH.exists():
+            try:
+                raw = json.loads(self._STATE_PATH.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                raw = {}
+        else:
+            raw = {}
+
+        raw_tasks = raw.get("tasks")
+        if isinstance(raw_tasks, list):
+            tasks: List[TodoTask] = []
+            for item in raw_tasks:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    tasks.append(TodoTask(**item))
+                except TypeError:
+                    continue
+            if tasks:
+                self._tasks = OrderedDict((task.id, task) for task in tasks)
+        if not self._tasks:
+            default_tasks = self._initial_tasks()
+            self._tasks = OrderedDict((task.id, task) for task in default_tasks)
+
+        self._completed_total = int(raw.get("completedCount", 0) or 0)
+        raw_completed = raw.get("completedTasks")
+        if isinstance(raw_completed, list):
+            self._completed_log = [
+                item
+                for item in raw_completed
+                if isinstance(item, dict)
+                and "title" in item
+                and "completed_at" in item
+            ][-50:]
+        last_completed = raw.get("lastCompletedAt")
+        self._last_completed_at = str(last_completed) if last_completed else None
+
+        if not self._STATE_PATH.exists():
+            self._persist_sync()
+
+    def _serialize_state(self) -> Dict[str, Any]:
+        return {
+            "tasks": [asdict(task) for task in self._tasks.values()],
+            "completedCount": self._completed_total,
+            "lastCompletedAt": self._last_completed_at,
+            "completedTasks": self._completed_log,
+        }
+
+    def _persist_sync(self) -> None:
+        try:
+            self._STATE_PATH.write_text(
+                json.dumps(self._serialize_state(), indent=2), encoding="utf-8"
+            )
+        except OSError:
+            pass
+
+    async def _persist_unlocked(self) -> None:
+        payload = json.dumps(self._serialize_state(), indent=2)
+        try:
+            await asyncio.to_thread(
+                self._STATE_PATH.write_text, payload, encoding="utf-8"
+            )
+        except OSError:
+            pass
+
+    def _stats_unlocked(self) -> Dict[str, Any]:
+        active = len(self._tasks)
+        return {
+            "total": active + self._completed_total,
+            "active": active,
+            "completed": self._completed_total,
+            "lastCompletedAt": self._last_completed_at,
+        }
+
+    async def snapshot(self) -> Dict[str, Any]:
         async with self._lock:
-            return [asdict(task) for task in self._tasks.values()]
+            return {
+                "tasks": [asdict(task) for task in self._tasks.values()],
+                "stats": self._stats_unlocked(),
+                "completedTasks": list(self._completed_log),
+            }
 
     async def add_task(self, title: str) -> Dict[str, Any]:
         new_task = TodoTask(id=uuid.uuid4().hex[:8], title=title.strip())
         async with self._lock:
             self._tasks[new_task.id] = new_task
+            await self._persist_unlocked()
             return asdict(new_task)
 
     async def remove_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         async with self._lock:
             task = self._tasks.pop(task_id, None)
-            return asdict(task) if task else None
+            if task is None:
+                return None
+            self._completed_total += 1
+            completed_at = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+            self._last_completed_at = completed_at
+            record = {
+                "id": task.id,
+                "title": task.title,
+                "completed_at": completed_at,
+            }
+            self._completed_log.append(record)
+            if len(self._completed_log) > 50:
+                self._completed_log = self._completed_log[-50:]
+            await self._persist_unlocked()
+            return asdict(task)
 
 
 TODO_STORE = TodoStore()
@@ -340,16 +442,24 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
     }
 
     if tool_name == GET_TASKS_TOOL:
-        tasks = await TODO_STORE.list_tasks()
+        snapshot = await TODO_STORE.snapshot()
+        tasks = snapshot["tasks"]
+        stats = snapshot["stats"]
+        completed_log = snapshot.get("completedTasks", [])
+        active = stats.get("active", 0)
         message = (
-            "You currently have no tasks."
-            if not tasks
-            else f"You currently have {len(tasks)} task{'s' if len(tasks) != 1 else ''}."
+            "You currently have no active tasks."
+            if active == 0
+            else f"You currently have {active} active task{'s' if active != 1 else ''}."
         )
         return types.ServerResult(
             types.CallToolResult(
                 content=[types.TextContent(type="text", text=message)],
-                structuredContent={"tasks": tasks},
+                structuredContent={
+                    "tasks": tasks,
+                    "stats": stats,
+                    "completedTasks": completed_log,
+                },
                 _meta=meta,
             )
         )
@@ -368,12 +478,24 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             )
 
         new_task = await TODO_STORE.add_task(title)
-        tasks = await TODO_STORE.list_tasks()
-        message = f"Added task “{new_task['title']}” (id: {new_task['id']})."
+        snapshot = await TODO_STORE.snapshot()
+        tasks = snapshot["tasks"]
+        stats = snapshot["stats"]
+        completed_log = snapshot.get("completedTasks", [])
+        message = (
+            f"Added task “{new_task['title']}” (id: {new_task['id']}). "
+            f"You now have {stats.get('active', 0)} active task"
+            f"{'s' if stats.get('active', 0) != 1 else ''}."
+        )
         return types.ServerResult(
             types.CallToolResult(
                 content=[types.TextContent(type="text", text=message)],
-                structuredContent={"tasks": tasks, "added": new_task},
+                structuredContent={
+                    "tasks": tasks,
+                    "stats": stats,
+                    "completedTasks": completed_log,
+                    "added": new_task,
+                },
                 _meta=meta,
             )
         )
@@ -395,6 +517,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
 
     removed = await TODO_STORE.remove_task(task_id)
     if removed is None:
+        snapshot = await TODO_STORE.snapshot()
         return types.ServerResult(
             types.CallToolResult(
                 content=[
@@ -403,17 +526,35 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                         text=f"No task with id “{task_id}” was found.",
                     )
                 ],
+                structuredContent={
+                    "tasks": snapshot["tasks"],
+                    "stats": snapshot["stats"],
+                    "completedTasks": snapshot.get("completedTasks", []),
+                },
                 isError=True,
                 _meta=meta,
             )
         )
 
-    tasks = await TODO_STORE.list_tasks()
-    message = f"Removed task “{removed['title']}”."
+    snapshot = await TODO_STORE.snapshot()
+    tasks = snapshot["tasks"]
+    stats = snapshot["stats"]
+    completed_log = snapshot.get("completedTasks", [])
+    remaining = stats.get("active", 0)
+    completed = stats.get("completed", 0)
+    message = (
+        f"Completed task “{removed['title']}”. "
+        f"{remaining} active remaining, {completed} completed overall."
+    )
     return types.ServerResult(
         types.CallToolResult(
             content=[types.TextContent(type="text", text=message)],
-            structuredContent={"tasks": tasks, "removed": removed},
+            structuredContent={
+                "tasks": tasks,
+                "stats": stats,
+                "completedTasks": completed_log,
+                "removed": removed,
+            },
             _meta=meta,
         )
     )
